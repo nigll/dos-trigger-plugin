@@ -6,39 +6,37 @@ import hudson.Extension;
 import hudson.FilePath;
 import hudson.Launcher;
 import hudson.Util;
-import hudson.model.Cause;
-import hudson.model.Hudson;
-import hudson.model.ParameterDefinition;
-import hudson.model.ParametersDefinitionProperty;
-import hudson.model.PasswordParameterValue;
-import hudson.model.Project;
-import hudson.model.StringParameterValue;
-import hudson.model.Item;
-import hudson.model.TaskListener;
-import hudson.model.TopLevelItem;
+import hudson.model.*;
+import hudson.slaves.EnvironmentVariablesNodeProperty;
 import hudson.tasks.Messages;
 import hudson.triggers.Trigger;
 import hudson.triggers.TriggerDescriptor;
 import hudson.util.LogTaskListener;
 import org.kohsuke.stapler.DataBoundConstructor;
+import jenkins.model.Jenkins;
+
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.util.Set;
 
 public class DosTrigger extends Trigger<Project> {
     private transient static final Logger LOGGER    = Logger.getLogger(DosTrigger.class.getName());
 
     private        final String script;
     private static final String MARKER    = "#:#:#";
-    private static final String CAUSE_VAR = "CAUSE";
+    private static final String CAUSE_VAR = "CHANGES";
     private static final String CRLF      = "\r\n";
-
     private int nextBuildNum;
+    //public  String cause;
 
     @DataBoundConstructor
     public DosTrigger(String schedule, String script) throws ANTLRException {
@@ -52,25 +50,33 @@ public class DosTrigger extends Trigger<Project> {
     }
 
     @SuppressWarnings({"UnusedDeclaration"})
-    public String getSchedule() {
+    public String getSchedule()
+    {
         return spec;
     }
 
-	/**
+
+    /**
      * 
      */
     private void triggerScript() {
+        final TaskListener listener = new LogTaskListener(LOGGER, Level.INFO);
+        final Launcher launcher = Hudson.getInstance().createLauncher(listener);
         try {
-            String output = runScript();
+            final EnvVars envVars = this.buildEnvironmentForScriptToRun(listener);
+            String output = runScript(envVars,listener,launcher);
             String cause = output == null ? "" : getVar(CAUSE_VAR, output);
             if (cause.length()>0) {
+                envVars.put("TRIGGER_VAR",cause);
+                launcher.launch().envs(envVars);
                 job.scheduleBuild(0, new MyCause(cause));
+
             }
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Problem while executing DosTrigger.run()", e);
+            LOGGER.log(Level.SEVERE, "Problem while executing BashTrigger.run()", e);
         }
     }
-    
+
 
     /**
      * Plugin entry point is here.
@@ -80,14 +86,23 @@ public class DosTrigger extends Trigger<Project> {
         if (!Hudson.getInstance().isQuietingDown() && this.job.isBuildable()) {
         	this.triggerScript();
         }
+
+
     }
 
+
     private String getVar(final String var, final String output) {
-        Matcher matcher     = Pattern.compile("(?s).*"+MARKER + var +MARKER + "([^\n\r]*)"+MARKER+".*").matcher(output);
+        String regex="(.*)CHANGES=((\\d+\\s*)+)(.*)";
+        Pattern pattern = Pattern.compile(regex);
         String  description = null;
-        if (matcher.matches()) {
-            description = matcher.group(1).trim();
+        for(String word:output.split("\n")) {
+            Matcher m = pattern.matcher(word);
+            if(m.find()){
+                description = m.group(2).trim();
+                System.out.println("FOUND VALUE: " + m.group(0));
+            }
         }
+
         if (description == null || description.length() == 0) {
             description = "";
         }
@@ -97,7 +112,7 @@ public class DosTrigger extends Trigger<Project> {
     @Extension
     public static final class DescriptorImpl extends TriggerDescriptor {
         public String getDisplayName() {
-            return "Poll with a Windows Batch Command";
+            return "Poll with Script Command";
         }
 
         public boolean isApplicable(Item item) {
@@ -124,7 +139,7 @@ public class DosTrigger extends Trigger<Project> {
 //        env.put("JOB_NAME",getParent().getFullName());
         return env;
     }
-    
+
     
     /**
      * Builds the environment variables for the parameters used in building the project
@@ -135,7 +150,6 @@ public class DosTrigger extends Trigger<Project> {
      */
     private EnvVars buildEnvironmentForScriptToRun(TaskListener listener) throws IOException, InterruptedException {
     	EnvVars envVars = new EnvVars();
-
     	ParametersDefinitionProperty p = (ParametersDefinitionProperty) this.job.getProperty(ParametersDefinitionProperty.class);
     	if(p!=null) {
 	    	List <ParameterDefinition> paramList = p.getParameterDefinitions();
@@ -150,27 +164,26 @@ public class DosTrigger extends Trigger<Project> {
 	    		}
 	        }
     	}
-		
+
     	this.initCharacteristicEnvVars(envVars); 
-        
+
     	return envVars;
     }
 
-    private String runScript() throws InterruptedException {
-        final TaskListener listener = new LogTaskListener(LOGGER, Level.INFO);
+    private String runScript(EnvVars envVars,TaskListener listener,Launcher launcher ) throws InterruptedException {
         try {
             final FilePath  ws        = Hudson.getInstance().getWorkspaceFor((TopLevelItem) job);
-            final FilePath  batchFile = ws.createTextTempFile("hudson", ".bat", makeScript(), false);
-            final FilePath  logFile   = ws.child("dos-trigger.log");
+            final FilePath  batchFile = ws.createTextTempFile("hudson", ".sh", makeScript(), false);
+            batchFile.chmod(0777);
+            final FilePath  logFile   = ws.child("gerrit-trigger.log");
             final LogStream logStream = new LogStream(logFile);
             try {
-                final Launcher launcher = Hudson.getInstance().createLauncher(listener);
-                final String[] cmd      = new String[]{"cmd", "/c", "call", batchFile.getRemote()};
-
-                final EnvVars envVars = this.buildEnvironmentForScriptToRun(listener);
+                String[] cmd = new String[] {"cmd","/c","call", batchFile.getRemote()};
+                if(launcher.isUnix()) {
+                    cmd = new String[]{"bash", "-c", batchFile.getRemote()};}
             	if (envVars.size()>0) {
                     launcher.launch().cmds(cmd).envs(envVars).stdout(logStream).pwd(ws).join();
-            		
+                    LOGGER.log(Level.INFO, logStream.toString());
             	}else {
             		LOGGER.log(Level.WARNING, "EnvVars returned with nothing in it..");
 					assert(envVars.size()>0);
@@ -182,7 +195,9 @@ public class DosTrigger extends Trigger<Project> {
                 return null;
             } finally {
                 try {
+                    LOGGER.log(Level.INFO,"command fishing....");
                     batchFile.delete();
+                    //batchFile.copyTo(ws);
                 } catch (IOException e) {
                     Util.displayIOException(e, listener);
                     e.printStackTrace(listener.fatalError(Messages.CommandInterpreter_UnableToDelete(batchFile)));
@@ -198,13 +213,6 @@ public class DosTrigger extends Trigger<Project> {
 
     private String makeScript() {
         return ""
-                + "@set "+ CAUSE_VAR +"=" +CRLF
-                + "@echo off" + CRLF
-                + "call :TheActualScript" + CRLF
-                + "@echo off" + CRLF
-                + "echo " + MARKER + CAUSE_VAR + MARKER + "%" + CAUSE_VAR + "%" + MARKER + CRLF
-                + "goto :EOF" + CRLF
-                + ":TheActualScript" + CRLF
                 + script + CRLF;
     }
 
@@ -212,9 +220,8 @@ public class DosTrigger extends Trigger<Project> {
         private final String description;
 
         public MyCause(String description) {
-            this.description = description;
+            this.description = "Started by CHEANGE " +description;
         }
-
         public String getShortDescription() {
             return description;
         }

@@ -14,6 +14,7 @@ public final class DosTrigger extends org.jenkinsci.plugins.dostrigger.DosTrigge
 
     protected Object readResolve() throws ObjectStreamException {
         try {
+
             return new org.jenkinsci.plugins.dostrigger.DosTrigger(
                 getSchedule(), getScript());
         } catch (ANTLRException e) {
@@ -22,4 +23,5 @@ public final class DosTrigger extends org.jenkinsci.plugins.dostrigger.DosTrigge
             throw x;
         }
     }
+
 }
