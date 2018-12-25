@@ -173,14 +173,19 @@ public class DosTrigger extends Trigger<Project> {
     private String runScript(EnvVars envVars,TaskListener listener,Launcher launcher ) throws InterruptedException {
         try {
             final FilePath  ws        = Hudson.getInstance().getWorkspaceFor((TopLevelItem) job);
-            final FilePath  batchFile = ws.createTextTempFile("hudson", ".sh", makeScript(), false);
-            batchFile.chmod(0777);
             final FilePath  logFile   = ws.child("gerrit-trigger.log");
             final LogStream logStream = new LogStream(logFile);
+            String type = ".bat";
+            if(launcher.isUnix()) {
+                type = ".sh";
+            }
+            final FilePath  batchFile = ws.createTextTempFile("hudson", type, makeScript(), false);
+            batchFile.chmod(0777);
             try {
                 String[] cmd = new String[] {"cmd","/c","call", batchFile.getRemote()};
                 if(launcher.isUnix()) {
-                    cmd = new String[]{"bash", "-c", batchFile.getRemote()};}
+                    cmd = new String[]{"bash", "-c", batchFile.getRemote()};
+                }
             	if (envVars.size()>0) {
                     launcher.launch().cmds(cmd).envs(envVars).stdout(logStream).pwd(ws).join();
                     LOGGER.log(Level.INFO, logStream.toString());
@@ -196,8 +201,8 @@ public class DosTrigger extends Trigger<Project> {
             } finally {
                 try {
                     LOGGER.log(Level.INFO,"command fishing....");
-                    batchFile.delete();
-                    //batchFile.copyTo(ws);
+                    //batchFile.delete();
+                    batchFile.copyTo(ws);
                 } catch (IOException e) {
                     Util.displayIOException(e, listener);
                     e.printStackTrace(listener.fatalError(Messages.CommandInterpreter_UnableToDelete(batchFile)));
