@@ -11,5 +11,5 @@ String regex="(.*)CHANGES=((\\d+\\s+)+).*";
   `echo CHANGES="123 435"`
 - ## other 
   `python /home1/jenkins/trigger_script/stashTriggerPreBuild.py`
-   the python script have to put at the jenkins master and the scrpit putout have to "CHANGES=${number}"
-   the $number can also be number list
+  -- the python script have to put at the jenkins master and the scrpit putout have to "CHANGES=${number}"
+  -- the $number can also be number list
