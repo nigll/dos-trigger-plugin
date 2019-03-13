@@ -4,7 +4,7 @@ Jenkins dos-trigger plugin
 This Jenkins Plugin is used for trigger a build by a command \
 Trigger type format is : CHANGES=${number} \
 String regex="(.*)CHANGES=((\\d+\\s+)+).*";\
-##config example
+# config example
 - ## shell 
   `echo $(CHANGES="123 435")`
 - ## Windows
