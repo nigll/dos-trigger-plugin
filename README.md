@@ -10,6 +10,6 @@ String regex="(.*)CHANGES=((\\d+\\s+)+).*";\
 - ## Windows
   `echo CHANGES="123 435"`
 - ## other 
-  `python /home1/jenkins/trigger_script/stashTriggerPreBuild.py`
+  `python /home1/jenkins/trigger_script/stashTriggerPreBuild.py` \
   the python script have to put at the jenkins master and the scrpit putout have to "CHANGES=${number}" \
   the $number can also be number list
