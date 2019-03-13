@@ -92,7 +92,7 @@ public class DosTrigger extends Trigger<Project> {
 
 
     private String getVar(final String var, final String output) {
-        String regex="(.*)CHANGES=((\\d+\\s*)+)(.*)";
+        String regex="(.*)CHANGES=((\\d+\\s+)+).*";
         Pattern pattern = Pattern.compile(regex);
         String  description = null;
         for(String word:output.split("\n")) {
@@ -158,15 +158,18 @@ public class DosTrigger extends Trigger<Project> {
 	    		if (obj instanceof PasswordParameterValue) {
 	    			PasswordParameterValue password = (PasswordParameterValue)obj;
 	    			password.buildEnvVars(null, envVars);
-	    		}else {
+	    		}else if (obj instanceof BooleanParameterValue){
+                    BooleanParameterValue booleanParameterValue = (BooleanParameterValue) obj;
+                    booleanParameterValue.buildEnvVars(null, envVars);
+                }
+                else
+	    		{
 	    			StringParameterValue stringParam = (StringParameterValue) obj;
 	    			stringParam.buildEnvVars(null, envVars);
 	    		}
 	        }
     	}
-
-    	this.initCharacteristicEnvVars(envVars); 
-
+    	this.initCharacteristicEnvVars(envVars);
     	return envVars;
     }
 
@@ -186,9 +189,10 @@ public class DosTrigger extends Trigger<Project> {
                 if(launcher.isUnix()) {
                     cmd = new String[]{"bash", "-c", batchFile.getRemote()};
                 }
+                LOGGER.log(Level.INFO, cmd.toString());
             	if (envVars.size()>0) {
                     launcher.launch().cmds(cmd).envs(envVars).stdout(logStream).pwd(ws).join();
-                    LOGGER.log(Level.INFO, logStream.toString());
+                   // LOGGER.log(Level.INFO, logStream.toString());
             	}else {
             		LOGGER.log(Level.WARNING, "EnvVars returned with nothing in it..");
 					assert(envVars.size()>0);
@@ -201,8 +205,8 @@ public class DosTrigger extends Trigger<Project> {
             } finally {
                 try {
                     LOGGER.log(Level.INFO,"command fishing....");
-                    //batchFile.delete();
-                    batchFile.copyTo(ws);
+                    batchFile.delete();
+                   // batchFile.copyTo(ws);
                 } catch (IOException e) {
                     Util.displayIOException(e, listener);
                     e.printStackTrace(listener.fatalError(Messages.CommandInterpreter_UnableToDelete(batchFile)));
@@ -217,8 +221,7 @@ public class DosTrigger extends Trigger<Project> {
     }
 
     private String makeScript() {
-        return ""
-                + script + CRLF;
+        return "" + script;
     }
 
     private static class MyCause extends Cause {
